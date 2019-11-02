@@ -1,7 +1,9 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
-
 import numpy as np
+
+__all__ = ['Module', 'Observation']
+
 
 class Module(object):
     __counter = 0
@@ -46,4 +48,3 @@ class Observation(Module):
     def __init__( self, data, name="obs" ):
         super(Observation,self).__init__( name=name, learnable=False )
         self.set_forward_msg(data)
-        
