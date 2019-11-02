@@ -1,9 +1,50 @@
 # encoding: utf-8
-import numpy
+import os
 import random
 import math
 import os
 import pickle
+
+import ..serket as srk
+import numpy as np
+
+__all__ = ['GMM', 'GaussWishart']
+
+
+class GMM(srk.Module):
+    def __init__( self, K, itr=100, name="gmm", category=None, mode="learn" ):
+        super(GMM, self).__init__(name, True)
+        self.__K = K
+        self.__itr = itr
+        self.__category = category
+        self.__mode = mode
+        self.__n = 0
+        
+        if mode != "learn" and mode != "recog":
+            raise ValueError("choose mode from \"learn\" or \"recog\"")
+
+    def update(self):
+        data = self.get_observations()
+        Pdz = self.get_backward_msg() # P(z|d)
+
+        N = len( data[0] )  # データ数
+
+        # backward messageがまだ計算されていないときは一様分布にする
+        if Pdz is None:
+            Pdz = np.ones( (N, self.__K) ) / self.__K
+
+        data[0] = np.array( data[0], dtype=np.float32 )
+
+        save_dir = os.path.join( self.get_name(), "%03d" % self.__n )
+        # GMM学習
+        Pdz, mu = gmm.train( data[0], self.__K, self.__itr, save_dir, Pdz, self.__category, self.__mode )
+        
+        self.__n += 1
+
+        # メッセージの送信
+        self.set_forward_msg( Pdz )
+        self.send_backward_msgs( [mu] )
+
 
 # 確率を計算するためのクラス
 class GaussWishart():
@@ -13,10 +54,10 @@ class GaussWishart():
         self.__r0 = 1
         self.__nu0 = dim + 2
         self.__m0 = mean.reshape((dim,1))
-        self.__S0 = numpy.eye(dim, dim ) * var
+        self.__S0 = np.eye(dim, dim ) * var
 
-        self.__X = numpy.zeros( (dim,1) )
-        self.__C = numpy.zeros( (dim, dim) )
+        self.__X = np.zeros( (dim,1) )
+        self.__C = np.zeros( (dim, dim) )
         self.__r = self.__r0
         self.__nu = self.__nu0
         self.__N = 0
@@ -49,7 +90,7 @@ class GaussWishart():
         def _calc_loglik(self):
             p = - self.__N * self.__dim * 0.5 * math.log( math.pi )
             p+= - self.__dim * 0.5 * math.log( self.__r )
-            p+= - self.__nu * 0.5 * math.log( numpy.linalg.det( self.__S ) );
+            p+= - self.__nu * 0.5 * math.log( np.linalg.det( self.__S ) );
 
             for d in range(1,self.__dim+1):
                 p += math.lgamma( 0.5*(self.__nu+1-d) )
@@ -109,7 +150,7 @@ def sample_class( d, distributions, i, bias_dz ):
 
 
 def calc_acc( results, correct ):
-    K = numpy.max(results)+1  # カテゴリ数
+    K = np.max(results)+1  # カテゴリ数
     N = len(results)          # データ数
     max_acc = 0               # 精度の最大値
     changed = True            # 変化したかどうか
@@ -118,7 +159,7 @@ def calc_acc( results, correct ):
         changed = False
         for i in range(K):
             for j in range(K):
-                tmp_result = numpy.zeros( N )
+                tmp_result = np.zeros( N )
 
                 # iとjを入れ替える
                 for n in range(N):
@@ -152,17 +193,17 @@ def save_model( Pdz, mu, classes, save_dir, categories, distributions, mode ):
             pickle.dump( params, f )
 
     # 確率と平均の保存
-    numpy.savetxt( os.path.join( save_dir, "Pdz_{}.txt".format(mode) ), Pdz, fmt=str("%f") )
-    numpy.savetxt( os.path.join( save_dir, "mu_{}.txt".format(mode) ), mu )
+    np.savetxt( os.path.join( save_dir, "Pdz_{}.txt".format(mode) ), Pdz, fmt=str("%f") )
+    np.savetxt( os.path.join( save_dir, "mu_{}.txt".format(mode) ), mu )
 
     # 分類結果・精度の計算と保存
     if categories is not None:
         acc, results = calc_acc( classes, categories )
-        numpy.savetxt( os.path.join( save_dir, "class_{}.txt".format(mode) ), results, fmt=str("%d") )
-        numpy.savetxt( os.path.join( save_dir, "acc_{}.txt".format(mode) ), [acc], fmt=str("%f") )
+        np.savetxt( os.path.join( save_dir, "class_{}.txt".format(mode) ), results, fmt=str("%d") )
+        np.savetxt( os.path.join( save_dir, "acc_{}.txt".format(mode) ), [acc], fmt=str("%f") )
         
     else:
-        numpy.savetxt( os.path.join( save_dir, "class{}.txt".format(mode) ), classes, fmt=str("%d") )
+        np.savetxt( os.path.join( save_dir, "class{}.txt".format(mode) ), classes, fmt=str("%d") )
 
 # モデルパラメータの読み込み
 def load_model( load_dir, distributions ):
@@ -179,14 +220,14 @@ def train( data, K, num_itr=100, save_dir="model", bias_dz=None, categories=None
     # データの次元
     dim = len(data[0])
 
-    Pdz = numpy.zeros((len(data),K))
-    mu = numpy.zeros((len(data),dim))
+    Pdz = np.zeros((len(data),K))
+    mu = np.zeros((len(data),dim))
 
     # データをランダムに分類
-    classes = numpy.random.randint( K , size=len(data) )
+    classes = np.random.randint( K , size=len(data) )
 
     # ガウス-ウィシャート分布の生成
-    mean = numpy.mean( data, axis=0 )
+    mean = np.mean( data, axis=0 )
     distributions = [ GaussWishart(dim, mean , 0.1) for _ in range(K) ]
     
     # 認識モード時は学習したモデルパラメータを読み込む
@@ -229,7 +270,7 @@ def train( data, K, num_itr=100, save_dir="model", bias_dz=None, categories=None
                 mu[m] = distributions[n].get_mean().reshape((1,dim))[0]                
                      
 
-    Pdz = (Pdz.T / numpy.sum(Pdz,1)).T
+    Pdz = (Pdz.T / np.sum(Pdz,1)).T
 
     save_model(Pdz, mu, classes, save_dir, categories, distributions, mode)
 
