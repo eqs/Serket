@@ -1,11 +1,17 @@
 # -*- coding: utf-8 -*-
 #from __future__ import unicode_literals
+import os
 import numpy as np
 from scipy.cluster.vq import vq, kmeans2
 from scipy.io import wavfile
 from librosa import logamplitude
 from librosa.feature import delta, melspectrogram
 from librosa.filters import dct
+
+import ..serket as srk
+
+__all__ = ['HACFeatureExtracter', 'NFCC_PARAMS']
+
 
 MFCC_PARAMS = {
     'n_mfcc': 13,   # Librosa default is 20
@@ -59,3 +65,34 @@ def hac(data, sr, codebooks, lags=[5, 2], **mfcc_params):
 def wav2hac(wav_path, codebooks, lags=[5, 2], **mfcc_params):
     sr, data = wavfile.read(wav_path)
     return hac(data, sr, codebooks, lags=lags, **mfcc_params)    
+
+
+class HACFeatureExtractor(srk.Module):
+    def __init__(self, filenames, ks, lags=[5,2], name="HACFeatureExtracter", **mfcc_params):
+        super(HACFeatureExtractor, self).__init__(name, False)
+        self.is_ninitilized = False
+        self.filenames = filenames
+        self.ks = ks
+        self.lags = lags
+        self.mfcc_params = mfcc_params
+        
+        # コードブックの作成
+        cdbs = build_codebooks_from_list_of_wav( self.filenames, self.ks, **self.mfcc_params )
+        
+        # wavをhacへ変換
+        hacs = []
+        for n in range(len(self.filenames)):
+            hacs.append( wav2hac(self.filenames[n], cdbs, self.lags, **self.mfcc_params) )
+        
+        # hacsを保存
+        save_dir = self.get_name()
+        try:
+            os.mkdir( save_dir )
+        except:
+            pass
+        np.savetxt( os.path.join( save_dir, "hac.txt"), hacs )
+
+        self.is_ninitilized = True
+    
+        self.set_forward_msg( hacs )
+
