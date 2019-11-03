@@ -4,6 +4,10 @@ import os
 import numpy as np
 import tensorflow as tf
 
+import ..serket as srk
+
+__all__ = ['VAE']
+
 
 # 変数を生成する関数を定義
 def weight_variable(shape, stddev):
@@ -125,3 +129,38 @@ def train( data, latent_dim, weight_stddev, num_itr=5000, save_dir="model", mu_p
     
     return zz, xx
 
+
+class VAE(srk.Module):
+    def __init__( self, latent_dim, weight_stddev=0.1, itr=5000, name="vae", hidden_encoder_dim=100, hidden_decoder_dim=100, batch_size=None, KL_param=1, mode="learn" ):
+        super(VAE, self).__init__(name, True)
+        self.__itr = itr
+        self.__latent_dim = latent_dim
+        self.__weight_stddev = weight_stddev
+        self.__hidden_encoder_dim = hidden_encoder_dim
+        self.__hidden_decoder_dim = hidden_decoder_dim
+        self.__batch_size = batch_size
+        self.__KL_param = KL_param
+        self.__mode = mode
+        
+        if mode != "learn" and mode != "recog":
+            raise ValueError("choose mode from \"learn\" or \"recog\"")
+
+    def update(self):
+        data = self.get_observations()
+        mu_prior = self.get_backward_msg() # P(z|d)
+
+        N = len(data[0])  # データ数
+        
+        # backward messageがまだ計算されていないとき
+        if mu_prior is None:
+            mu_prior = np.zeros( (N, self.__latent_dim) )
+
+        data[0] = np.array( data[0], dtype=np.float32 )
+        
+
+        # VAE学習
+        z, x = train( data[0], self.__latent_dim, self.__weight_stddev, self.__itr, self.get_name(), mu_prior, self.__hidden_encoder_dim, self.__hidden_encoder_dim, self.__batch_size, self.__KL_param, self.__mode )
+
+        # メッセージの送信
+        self.set_forward_msg( z )
+        self.send_backward_msgs( [x] )
